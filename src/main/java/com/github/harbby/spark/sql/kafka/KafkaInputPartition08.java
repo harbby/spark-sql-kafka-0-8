@@ -38,8 +38,12 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.ClosedChannelException;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 
 import static com.github.harbby.spark.sql.kafka.util.PropertiesUtil.getInt;
 
@@ -97,6 +101,7 @@ public class KafkaInputPartition08
         private final int bufferSize;
         private final int recreateConsumerLimit;
         private final String clientId;
+        private final long startOffset;
 
         private SimpleConsumer consumer;
         private long currentOffset;
@@ -111,7 +116,7 @@ public class KafkaInputPartition08
         {
             this.topicPartition = topicPartition;
             this.broker = broker;
-            this.currentOffset = startOffset;
+            this.startOffset = startOffset;
 
             // these are the actual configuration values of Kafka + their original default values.
             this.soTimeout = getInt(kafkaParams, "socket.timeout.ms", 30000);
@@ -125,14 +130,49 @@ public class KafkaInputPartition08
 
             // create the Kafka consumer that we actually use for fetching
             this.consumer = new SimpleConsumer(broker.host(), broker.port(), soTimeout, bufferSize, clientId);
+
+            this.consumerFetchThread = new Thread(() -> {
+                long nextOffset = startOffset + 1;
+                while (true) {
+                    Iterator<MessageAndOffset> messageIterator = null;
+                    try {
+                        messageIterator = fetch(nextOffset);
+                    }
+                    catch (Throwable e) {
+                        consumerIOException = new IOException("consumer fetch failed", e);
+                        break;
+                    }
+
+                    if (messageIterator == null) {
+                        continue;
+                    }
+
+                    List<MessageAndOffset> list = new ArrayList<>();
+                    while (messageIterator.hasNext()) {
+                        MessageAndOffset messageAndOffset = messageIterator.next();
+                        list.add(messageAndOffset);
+                        nextOffset = messageAndOffset.offset() + 1;
+                    }
+                    try {
+                        fetchQueue.put(list.iterator());
+                    }
+                    catch (InterruptedException e) {
+                        break;
+                    }
+                }
+            });
         }
 
         private Iterator<MessageAndOffset> fetchIterator;
+        private final BlockingQueue<Iterator<MessageAndOffset>> fetchQueue = new ArrayBlockingQueue<>(32);
+        private final Thread consumerFetchThread;
+        private volatile IOException consumerIOException;
+        private boolean isInitialized = false;
 
         /**
          * see: org.apache.flink.streaming.connectors.kafka.internals.SimpleConsumerThread
          */
-        private Iterator<MessageAndOffset> fetch()
+        private Iterator<MessageAndOffset> fetch(long nextOffset)
                 throws IOException
         {
             FetchRequestBuilder frb = new FetchRequestBuilder();
@@ -142,7 +182,7 @@ public class KafkaInputPartition08
             frb.addFetch(
                     topicPartition.topic(),
                     topicPartition.partition(),
-                    currentOffset + 1, // request the next record
+                    nextOffset, // request the next record
                     fetchSize);
 
             FetchRequest fetchRequest = frb.build();
@@ -174,7 +214,7 @@ public class KafkaInputPartition08
                     }
 
                     this.consumer = new SimpleConsumer(broker.host(), broker.port(), soTimeout, bufferSize, clientId);
-                    return fetch();
+                    return fetch(nextOffset);
                 }
                 throw e;
             }
@@ -194,12 +234,27 @@ public class KafkaInputPartition08
         public boolean next()
                 throws IOException
         {
+            if (!isInitialized) {
+                consumerFetchThread.setDaemon(true);
+                consumerFetchThread.setName("consumer_Fetch_partition_" + topicPartition.partition());
+                consumerFetchThread.start();
+                isInitialized = true;
+            }
+
             while (fetchIterator == null || !fetchIterator.hasNext()) {
+                if (consumerIOException != null) {
+                    throw consumerIOException;
+                }
                 if (TaskContext.get().isInterrupted() || TaskContext.get().isCompleted()) {
                     return false;
                 }
 
-                this.fetchIterator = fetch();
+                try {
+                    this.fetchIterator = fetchQueue.take();
+                }
+                catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
             }
             return true;
         }
@@ -245,6 +300,10 @@ public class KafkaInputPartition08
         public void close()
                 throws IOException
         {
+            if (consumerFetchThread != null) {
+                consumerFetchThread.interrupt();
+            }
+
             if (consumer != null) {
                 consumer.close();
             }

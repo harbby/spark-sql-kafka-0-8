@@ -21,6 +21,7 @@ import org.apache.spark.streaming.kafka.KafkaCluster;
 import org.apache.spark.streaming.kafka.OffsetRange;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.spark_project.jetty.util.ConcurrentArrayQueue;
 import scala.Tuple2;
 import scala.collection.JavaConverters;
 import scala.collection.Seq;
@@ -31,7 +32,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Queue;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
 import static org.spark_project.guava.base.Preconditions.checkArgument;
 
@@ -50,7 +50,7 @@ public class KafkaOffsetCommitter
     private volatile boolean running = false;
 
     private final int commitInterval;
-    private final Queue<KafkaPartitionOffset> commitQueue = new ConcurrentLinkedQueue<>();
+    private final Queue<KafkaPartitionOffset> commitQueue = new ConcurrentArrayQueue<>(1024);
 
     public KafkaOffsetCommitter(
             KafkaCluster kafkaCluster,
@@ -76,7 +76,7 @@ public class KafkaOffsetCommitter
         if (running) {
             for (OffsetRange offsetRange : offsetRanges) {
                 KafkaPartitionOffset kafkaPartitionOffset = new KafkaPartitionOffset(offsetRange.topicAndPartition(), offsetRange.untilOffset());
-                commitQueue.add(kafkaPartitionOffset);
+                commitQueue.offer(kafkaPartitionOffset);
             }
         }
     }
