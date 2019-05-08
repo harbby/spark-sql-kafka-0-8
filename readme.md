@@ -7,16 +7,20 @@ Spark Structured Streaming kafka-0-8
 <dependency>
   <groupId>com.github.harbby</groupId>
   <artifactId>spark-sql-kafka-0-8</artifactId>
-  <version>1.0.0-alpha1</version>
+  <version>1.0.0-alpha2</version>
 </dependency>
 ```
 
-### use
+## limit
+* must spark2.3+
+* must writeStream().trigger(Trigger.Continuous...)
+
+### Use
 ```
 val sparkSession = ...
 
 val kafka08:DataFrame = sparkSession.readStream()
-    .format(KafkaDataSource08.class.getName())
+    .format("kafka08")
     .option("kafka_topic", "topic1,topic2")
     .option("kafka_broker", "broker1:9092,broker2:9092")
     .option("kafka_group_id", "test1")
@@ -26,5 +30,9 @@ val kafka08:DataFrame = sparkSession.readStream()
     .option("auto.commit.interval.ms", "5000")
     .load();
     
-kafka08.map(...)    
+    ...
+    
+    dataFrame.writeStream()
+         .trigger(Trigger.Continuous(Duration.apply(90, TimeUnit.SECONDS))) //it is necessary
+         ...   
 ```
