@@ -17,11 +17,11 @@ val sparkSession = ...
 
 val kafka08:DataFrame = sparkSession.readStream()
     .format(KafkaDataSource08.class.getName())
-    .option("kafka_topic", "test1")
-    .option("kafka_broker", "localhost:9092")
+    .option("kafka_topic", "topic1,topic2")
+    .option("kafka_broker", "broker1:9092,broker2:9092")
     .option("kafka_group_id", "test1")
     .option("auto.offset.reset", "largest")
-    .option("zookeeper.connect", "localhost:2181")
+    .option("zookeeper.connect", "zk1:2181,zk2:2181")
     .option("auto.commit.enable", "true")
     .option("auto.commit.interval.ms", "5000")
     .load();
