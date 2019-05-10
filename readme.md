@@ -4,6 +4,9 @@ Spark Structured Streaming kafka source
 
 support kafka-0.8  kafka-0.9
 
+## License
+Apache License, Version 2.0 http://www.apache.org/licenses/LICENSE-2.0
+
 ## maven
 ```xml
 <dependency>
