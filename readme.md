@@ -1,6 +1,8 @@
 ## spark-sql-kafka-0-8
 
-Spark Structured Streaming kafka-0-8
+Spark Structured Streaming kafka source 
+
+support kafka-0.8  kafka-0.9
 
 ## maven
 ```xml
