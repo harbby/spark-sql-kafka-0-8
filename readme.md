@@ -21,10 +21,10 @@ val sparkSession = ...
 
 val kafka08:DataFrame = sparkSession.readStream()
     .format("kafka08")
-    .option("kafka_topic", "topic1,topic2")
-    .option("kafka_broker", "broker1:9092,broker2:9092")
-    .option("kafka_group_id", "test1")
-    .option("auto.offset.reset", "largest")
+    .option("topics", "topic1,topic2")
+    .option("bootstrap.servers", "broker1:9092,broker2:9092")
+    .option("group.id", "test1")
+    .option("auto.offset.reset", "largest")  //largest or smallest
     .option("zookeeper.connect", "zk1:2181,zk2:2181")
     .option("auto.commit.enable", "true")
     .option("auto.commit.interval.ms", "5000")
