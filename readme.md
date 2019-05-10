@@ -16,10 +16,11 @@ Spark Structured Streaming kafka-0-8
 * must writeStream().trigger(Trigger.Continuous...)
 
 ### Use
++ create
 ```
 val sparkSession = ...
 
-val kafka08:DataFrame = sparkSession.readStream()
+val kafka:DataFrame = sparkSession.readStream()
     .format("kafka08")
     .option("topics", "topic1,topic2")
     .option("bootstrap.servers", "broker1:9092,broker2:9092")
@@ -28,11 +29,25 @@ val kafka08:DataFrame = sparkSession.readStream()
     .option("zookeeper.connect", "zk1:2181,zk2:2181")
     .option("auto.commit.enable", "true")
     .option("auto.commit.interval.ms", "5000")
-    .load();
-    
+    .load(); 
+```
++ schema
+```
+kafka.printSchema();
+
+root
+ |-- _key: binary (nullable = true)
+ |-- _message: binary (nullable = true)
+ |-- _topic: string (nullable = false)
+ |-- _partition: integer (nullable = false)
+ |-- _offset: long (nullable = false)
+```
+
++ sink
+```
+    kafka.printSchema();
     ...
-    
     dataFrame.writeStream()
          .trigger(Trigger.Continuous(Duration.apply(90, TimeUnit.SECONDS))) //it is necessary
-         ...   
+         ...  
 ```
