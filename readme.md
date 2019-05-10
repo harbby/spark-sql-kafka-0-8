@@ -45,8 +45,6 @@ root
 
 + sink
 ```
-    kafka.printSchema();
-    ...
     dataFrame.writeStream()
          .trigger(Trigger.Continuous(Duration.apply(90, TimeUnit.SECONDS))) //it is necessary
          ...  
