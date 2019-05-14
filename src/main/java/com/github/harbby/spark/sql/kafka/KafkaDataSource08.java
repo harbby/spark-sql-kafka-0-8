@@ -176,6 +176,7 @@ public class KafkaDataSource08
             return new KafkaSourceOffset(fromOffsets);
         }
 
+        @SuppressWarnings("unchecked")
         @Override
         public void commit(Offset end)
         {
