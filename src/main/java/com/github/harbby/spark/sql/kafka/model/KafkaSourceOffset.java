@@ -25,6 +25,7 @@ import org.apache.spark.sql.sources.v2.reader.streaming.Offset;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 public class KafkaSourceOffset
@@ -41,6 +42,25 @@ public class KafkaSourceOffset
     public Map<TopicAndPartition, Long> getPartitionToOffsets()
     {
         return partitionToOffsets;
+    }
+
+    @Override
+    public boolean equals(Object obj)
+    {
+        if (this == obj) {
+            return true;
+        }
+        if ((obj == null) || (getClass() != obj.getClass())) {
+            return false;
+        }
+        KafkaSourceOffset o = (KafkaSourceOffset) obj;
+        return Objects.equals(partitionToOffsets, o.partitionToOffsets);
+    }
+
+    @Override
+    public int hashCode()
+    {
+        return Objects.hash(partitionToOffsets);
     }
 
     public static Map<TopicAndPartition, Long> getPartitionOffsets(Offset offset)

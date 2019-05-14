@@ -46,6 +46,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 
 import static com.github.harbby.spark.sql.kafka.util.PropertiesUtil.getInt;
+import static org.spark_project.guava.base.Objects.toStringHelper;
 
 /**
  * demo: org.apache.flink.streaming.connectors.kafka.internals.SimpleConsumerThread
@@ -86,6 +87,17 @@ public class KafkaInputPartition08
     public String[] preferredLocations()
     {
         return new String[] {broker.host()};
+    }
+
+    @Override
+    public String toString()
+    {
+        return toStringHelper(this)
+                .add("topicPartition", topicPartition)
+                .add("startOffset", startOffset)
+                .add("kafkaParams", kafkaParams)
+                .add("broker", broker)
+                .toString();
     }
 
     private static class KafkaInputPartitionReader08

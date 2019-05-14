@@ -18,7 +18,12 @@ package com.github.harbby.spark.sql.kafka.model;
 import kafka.cluster.Broker;
 import kafka.common.TopicAndPartition;
 
+import java.io.Serializable;
+
+import static org.spark_project.guava.base.Objects.toStringHelper;
+
 public class TopicPartitionLeader
+        implements Serializable
 {
     private final TopicAndPartition ktp;
     private final Broker leader;
@@ -37,5 +42,14 @@ public class TopicPartitionLeader
     public TopicAndPartition getKtp()
     {
         return ktp;
+    }
+
+    @Override
+    public String toString()
+    {
+        return toStringHelper(this)
+                .add("topicAndPartition", ktp)
+                .add("broker", leader)
+                .toString();
     }
 }

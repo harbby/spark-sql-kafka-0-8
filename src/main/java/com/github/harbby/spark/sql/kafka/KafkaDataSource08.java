@@ -15,9 +15,9 @@
  */
 package com.github.harbby.spark.sql.kafka;
 
-import com.github.harbby.spark.sql.kafka.model.TopicPartitionLeader;
 import com.github.harbby.spark.sql.kafka.model.KafkaPartitionOffset;
 import com.github.harbby.spark.sql.kafka.model.KafkaSourceOffset;
+import com.github.harbby.spark.sql.kafka.model.TopicPartitionLeader;
 import kafka.common.TopicAndPartition;
 import kafka.javaapi.consumer.SimpleConsumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -36,7 +36,9 @@ import org.apache.spark.sql.types.StructType;
 import org.apache.spark.streaming.kafka.KafkaCluster;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import scala.Tuple2;
 import scala.collection.JavaConverters;
+import scala.collection.Seq;
 import scala.collection.immutable.Map$;
 
 import java.net.MalformedURLException;
@@ -92,24 +94,19 @@ public class KafkaDataSource08
         final KafkaCluster kafkaCluster = new KafkaCluster(map);
 
         int commitInterval = getInt(properties, ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG, 90000);
-        KafkaOffsetCommitter kafkaOffsetCommitter = new KafkaOffsetCommitter(
-                kafkaCluster,
-                properties.getProperty(ConsumerConfig.GROUP_ID_CONFIG),
-                commitInterval);
-        return new KafkaContinuousReader08(options, properties, topics, groupId, kafkaCluster, kafkaOffsetCommitter);
+        return new KafkaContinuousReader08(options, properties, topics, groupId, kafkaCluster);
     }
 
     public static class KafkaContinuousReader08
             implements ContinuousReader
     {
-        private final List<TopicPartitionLeader> topicPartitionLeaders;
         private final DataSourceOptions options;
         private final Properties properties;
-        private final KafkaOffsetCommitter kafkaOffsetCommitter;
         private final Set<String> topics;
         private final KafkaCluster kafkaCluster;
         private final String groupId;
 
+        private Offset lastCommit;
         private Map<TopicAndPartition, Long> fromOffsets;
 
         public KafkaContinuousReader08(
@@ -117,15 +114,17 @@ public class KafkaDataSource08
                 Properties properties,
                 String[] topics,
                 String groupId,
-                KafkaCluster kafkaCluster,
-                KafkaOffsetCommitter kafkaOffsetCommitter)
+                KafkaCluster kafkaCluster)
         {
             this.options = options;
             this.properties = properties;
             this.kafkaCluster = kafkaCluster;
             this.topics = Arrays.stream(topics).collect(Collectors.toSet());
             this.groupId = groupId;
+        }
 
+        private List<TopicPartitionLeader> getKafkaBrokers()
+        {
             int soTimeout = getInt(properties, "socket.timeout.ms", 30000);
             int bufferSize = getInt(properties, "socket.receive.buffer.bytes", 65536);
 
@@ -134,15 +133,11 @@ public class KafkaDataSource08
 
             SimpleConsumer consumer = new SimpleConsumer(url.getHost(), url.getPort(), soTimeout, bufferSize, dummyClientId);
             try {
-                this.topicPartitionLeaders = getBrokers(consumer, Arrays.stream(topics).collect(Collectors.toList()), brokers);
+                return getBrokers(consumer, new ArrayList<>(topics), brokers);
             }
             finally {
                 consumer.close();
             }
-
-            this.kafkaOffsetCommitter = kafkaOffsetCommitter;
-            kafkaOffsetCommitter.setName("Kafka_Offset_Committer");
-            kafkaOffsetCommitter.start();
         }
 
         @Override
@@ -166,12 +161,12 @@ public class KafkaDataSource08
         public void setStartOffset(Optional<Offset> start)
         {
             if (start.isPresent() && start.get() instanceof KafkaSourceOffset) {
-                logger.warn("setting StartOffset {}, Will use checkpoint get startOffset", start);
                 this.fromOffsets = KafkaSourceOffset.getPartitionOffsets(start.get());
+                logger.warn("setting StartOffset {}, Will use checkpoint get startOffset", start);
             }
             else {
-                logger.warn("setting StartOffset {}, Will use kafka cluster get startOffset", start);
                 this.fromOffsets = getFromOffset(kafkaCluster, topics, groupId);
+                logger.info("setting StartOffset {}, Will use kafka cluster get startOffset", fromOffsets);
             }
         }
 
@@ -186,16 +181,19 @@ public class KafkaDataSource08
         {
             //---this.mergeOffsets()
             //通过merge 而来这里放心提交,且此处位于driver
-            Map<TopicAndPartition, Long> offsets = ((KafkaSourceOffset) end).getPartitionToOffsets();
-            KafkaPartitionOffset[] partitionOffsets = offsets.entrySet().stream().map(x -> new KafkaPartitionOffset(x.getKey(), x.getValue()))
-                    .toArray(KafkaPartitionOffset[]::new);
-            kafkaOffsetCommitter.addAll(partitionOffsets);
+            if (!end.equals(lastCommit)) {
+                Map<TopicAndPartition, Long> offsets = ((KafkaSourceOffset) end).getPartitionToOffsets();
+
+                logger.info("committing offset to kafka, {}", offsets);
+                Seq<Tuple2<TopicAndPartition, Long>> fromOffsetsAsJava = JavaConverters.mapAsScalaMapConverter(offsets).asScala().toSeq();
+                kafkaCluster.setConsumerOffsets(groupId, (scala.collection.immutable.Map<TopicAndPartition, Object>) Map$.MODULE$.apply(fromOffsetsAsJava));
+                this.lastCommit = end;
+            }
         }
 
         @Override
         public void stop()
         {
-            kafkaOffsetCommitter.close();
         }
 
         @Override
@@ -207,6 +205,8 @@ public class KafkaDataSource08
         @Override
         public List<InputPartition<InternalRow>> planInputPartitions()
         {
+            logger.info("getting kafka topic {}, partition info", topics);
+            List<TopicPartitionLeader> topicPartitionLeaders = getKafkaBrokers();
             List<InputPartition<InternalRow>> partitions = new ArrayList<>(topicPartitionLeaders.size());
 
             for (TopicPartitionLeader topicPartitionLeader : topicPartitionLeaders) {
@@ -221,6 +221,7 @@ public class KafkaDataSource08
                 partitions.add(inputPartition);
             }
 
+            logger.info("creating partitions {}", partitions);
             return partitions;
         }
     }
