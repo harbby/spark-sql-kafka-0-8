@@ -12,7 +12,7 @@ Apache License, Version 2.0 http://www.apache.org/licenses/LICENSE-2.0
 <dependency>
   <groupId>com.github.harbby</groupId>
   <artifactId>spark-sql-kafka-0-8</artifactId>
-  <version>1.0.0-alpha2</version>
+  <version>1.0.0</version>
 </dependency>
 ```
 
